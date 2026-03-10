@@ -11,15 +11,20 @@ from sqlalchemy import (
     Column, String, Float, Integer, Boolean, DateTime, Date, ForeignKey, create_engine, text
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+import os
 
 # ─────────────────────────────────────────────
 # Engine & Session
 # ─────────────────────────────────────────────
-DATABASE_URL = "sqlite:///./air_quality.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./air_quality.db")
+
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args["check_same_thread"] = False
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Required for SQLite with async usage
+    connect_args=connect_args,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -68,6 +73,8 @@ class SensorReadings(Base):
     humidity         = Column(Float)
     pm2p5_raw        = Column(Float)
     pm2p5_corrected  = Column(Float)
+    pm2p5_drifted    = Column(Float, nullable=True)   # Drifted raw value before AI correction
+    drift_type       = Column(String, nullable=True, default="none")  # offset/humidity/random_walk/none
     is_anomaly       = Column(Integer, default=0)   # 0 = normal, 1 = anomaly
     is_failure       = Column(Integer, default=0)   # 0 = normal, 1 = sensor failure
 
@@ -88,6 +95,17 @@ class SensorReadings(Base):
 def init_db():
     """Create all tables if they do not already exist."""
     Base.metadata.create_all(bind=engine)
+    # Migrate existing tables: add new columns if missing
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE sensor_readings ADD COLUMN pm2p5_drifted FLOAT"))
+        except Exception:
+            pass  # Column already exists
+        try:
+            conn.execute(text("ALTER TABLE sensor_readings ADD COLUMN drift_type VARCHAR"))
+        except Exception:
+            pass
+        conn.commit()
     print("✅ Database initialized — tables created (or already exist).")
 
 

@@ -1,0 +1,10 @@
+INFO:     Started server process [76150]
+INFO:     Waiting for application startup.
+2026-03-10 22:40:27  INFO      Loading state_dict from /home/priyansh/Desktop/VAYU/Vayu-Rakshak/air_quality_model.pth ...
+2026-03-10 22:40:27  INFO      Model loaded from .pth state_dict + reconstructed architecture.
+2026-03-10 22:40:27  INFO      🔥 PyTorch model pre-warmed and ready.
+INFO:     Application startup complete.
+ERROR:    [Errno 98] error while attempting to bind on address ('127.0.0.1', 8000): address already in use
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+✅ Database initialized — tables created (or already exist).
