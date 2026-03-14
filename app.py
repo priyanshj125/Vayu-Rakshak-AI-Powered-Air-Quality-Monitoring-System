@@ -185,9 +185,10 @@ def fetch_sensor_analysis(sensor_id: str) -> dict:
 
 
 @st.cache_data(ttl=30, show_spinner=False)
-def fetch_city_aqi() -> dict:
+def fetch_city_aqi(city: str = None) -> dict:
     try:
-        r = requests.get(f"{API_BASE}/city_aqi", timeout=15)
+        params = {"city": city} if city else {}
+        r = requests.get(f"{API_BASE}/city_aqi", params=params, timeout=15)
         r.raise_for_status()
         return r.json()
     except Exception:
@@ -315,11 +316,20 @@ with st.sidebar:
 # TAB 1: DASHBOARD (ENHANCED)
 # ═══════════════════════════════════════════════════════
 if page == "🗺️ Dashboard":
-    st.markdown('<p class="tab-header">🗺️ City Air Quality Intelligence</p>', unsafe_allow_html=True)
+    st.markdown('<p class="tab-header">🗺️ City Air Quality </p>', unsafe_allow_html=True)
+    
+    # City Selection
+    sensors_list_df = fetch_sensors()
+    if not sensors_list_df.empty and "city" in sensors_list_df.columns:
+        available_cities = sorted(sensors_list_df["city"].unique().tolist())
+        selected_city = st.selectbox("🏙️ Switch City", available_cities, index=0 if "Delhi" not in available_cities else available_cities.index("Delhi"))
+    else:
+        selected_city = None
+
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
     # ── City AQI Hero Card ──
-    city_data = fetch_city_aqi()
+    city_data = fetch_city_aqi(selected_city)
     if city_data:
         cat_col = aqi_color(city_data["aqi_category"])
         trend_icon = {"rising": "📈 Rising", "falling": "📉 Falling", "stable": "➡️ Stable"}.get(city_data["trend_direction"], "➡️")
@@ -347,6 +357,12 @@ if page == "🗺️ Dashboard":
             </div>
         </div>
         """, unsafe_allow_html=True)
+    elif sensors_list_df is not None and not sensors_list_df.empty:
+        st.warning(f"No active data for {selected_city or 'the selected city'}. Deploy sensors to see logic.")
+        st.stop()
+    else:
+        st.info("🚀 **No sensors deployed yet.** Go to the 'Register Sensor' tab to start monitoring!")
+        st.stop()
 
         # Hotspot & Cleanest side-by-side
         hcol1, hcol2 = st.columns(2)
@@ -430,6 +446,7 @@ if page == "🗺️ Dashboard":
                         zoom_start=st.session_state.ui_target["zoom"],
                         tiles="CartoDB dark_matter",
                     )
+                    m.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution {display: none !important;}</style>"))
                     for _, row in latest.iterrows():
                         val = row["pm2p5_corrected"]
                         color = pm25_color(val)
@@ -784,6 +801,7 @@ elif page == "➕ Register Sensor":
             st.markdown("#### Sensor Details")
             sensor_id_input      = st.text_input("Sensor ID *", placeholder="e.g. ARI-2100")
             location_name_input  = st.text_input("Location Name *", placeholder="e.g. Connaught Place, Delhi")
+            city_input           = st.text_input("City *", value="Delhi", placeholder="e.g. Delhi, Roorkee, Mumbai")
             c1, c2 = st.columns(2)
             with c1:
                 lat_input  = st.number_input("Latitude *",  value=28.6139, format="%.6f", step=0.0001)
@@ -802,6 +820,7 @@ elif page == "➕ Register Sensor":
                 payload = {
                     "sensor_id":          sensor_id_input.strip(),
                     "location_name":      location_name_input.strip(),
+                    "city":               city_input.strip(),
                     "lat":                lat_input,
                     "long":               long_input,
                     "installation_date":  str(install_date_input),

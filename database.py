@@ -46,6 +46,7 @@ class SensorRegistry(Base):
 
     sensor_id         = Column(String, primary_key=True, index=True)
     location_name     = Column(String, nullable=False)
+    city              = Column(String, nullable=False, default="Delhi")
     lat               = Column(Float, nullable=False)
     long              = Column(Float, nullable=False)
     installation_date = Column(Date, default=date.today)
@@ -103,6 +104,10 @@ def init_db():
             pass  # Column already exists
         try:
             conn.execute(text("ALTER TABLE sensor_readings ADD COLUMN drift_type VARCHAR"))
+        except Exception:
+            pass
+        try:
+            conn.execute(text("ALTER TABLE sensor_registry ADD COLUMN city VARCHAR DEFAULT 'Delhi'"))
         except Exception:
             pass
         conn.commit()

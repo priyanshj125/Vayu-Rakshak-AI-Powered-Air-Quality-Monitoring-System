@@ -1,0 +1,304 @@
+INFO:     Will watch for changes in these directories: ['/home/priyansh/Desktop/VAYU/Vayu-Rakshak']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [211117] using WatchFiles
+INFO:     Started server process [211120]
+INFO:     Waiting for application startup.
+2026-03-15 00:07:13  INFO      Request URL: 'https://priyansh.blob.core.windows.net/vayu-hot-storage?restype=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-version': 'REDACTED'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.28.0 Python/3.12.3 (Linux-6.14.0-37-generic-x86_64-with-glibc2.41)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': 'd1cd73c4-1fd4-11f1-9bba-3003c895ccf5'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+2026-03-15 00:07:16  INFO      Response status: 200
+Response headers:
+    'Content-Length': '0'
+    'Last-Modified': 'Fri, 13 Mar 2026 00:38:33 GMT'
+    'ETag': '"0x8DE8098DB24882F"'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': 'f2b18859-901e-0058-2be1-b30377000000'
+    'x-ms-client-request-id': 'd1cd73c4-1fd4-11f1-9bba-3003c895ccf5'
+    'x-ms-version': 'REDACTED'
+    'x-ms-lease-status': 'REDACTED'
+    'x-ms-lease-state': 'REDACTED'
+    'x-ms-has-immutability-policy': 'REDACTED'
+    'x-ms-has-legal-hold': 'REDACTED'
+    'x-ms-immutable-storage-with-versioning-enabled': 'REDACTED'
+    'x-ms-default-encryption-scope': 'REDACTED'
+    'x-ms-deny-encryption-scope-override': 'REDACTED'
+    'Date': 'Sat, 14 Mar 2026 18:37:16 GMT'
+2026-03-15 00:07:16  INFO      Request URL: 'https://priyansh.blob.core.windows.net/vayu-cold-storage?restype=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-version': 'REDACTED'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.28.0 Python/3.12.3 (Linux-6.14.0-37-generic-x86_64-with-glibc2.41)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': 'd39d9e18-1fd4-11f1-9bba-3003c895ccf5'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+2026-03-15 00:07:17  INFO      Response status: 200
+Response headers:
+    'Content-Length': '0'
+    'Last-Modified': 'Fri, 13 Mar 2026 00:38:33 GMT'
+    'ETag': '"0x8DE8098DB4F131E"'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': 'f2b188df-901e-0058-80e1-b30377000000'
+    'x-ms-client-request-id': 'd39d9e18-1fd4-11f1-9bba-3003c895ccf5'
+    'x-ms-version': 'REDACTED'
+    'x-ms-lease-status': 'REDACTED'
+    'x-ms-lease-state': 'REDACTED'
+    'x-ms-has-immutability-policy': 'REDACTED'
+    'x-ms-has-legal-hold': 'REDACTED'
+    'x-ms-immutable-storage-with-versioning-enabled': 'REDACTED'
+    'x-ms-default-encryption-scope': 'REDACTED'
+    'x-ms-deny-encryption-scope-override': 'REDACTED'
+    'Date': 'Sat, 14 Mar 2026 18:37:17 GMT'
+2026-03-15 00:07:17  INFO      Loading state_dict from /home/priyansh/Desktop/VAYU/Vayu-Rakshak/air_quality_model.pth ...
+2026-03-15 00:07:17  INFO      Model loaded from .pth state_dict + reconstructed architecture.
+2026-03-15 00:07:17  INFO      🔥 PyTorch model pre-warmed and ready.
+INFO:     Application startup complete.
+✅ Database initialized — tables created (or already exist).
+INFO:     127.0.0.1:55722 - "GET /sensors HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/applications.py", line 112, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/routing.py", line 714, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/routing.py", line 734, in app
+    await route.handle(scope, receive, send)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/starlette/concurrency.py", line 37, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/anyio/to_thread.py", line 56, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 2134, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 851, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/priyansh/Desktop/VAYU/Vayu-Rakshak/main.py", line 340, in list_sensors
+    SensorInfo(
+  File "/home/priyansh/anaconda3/lib/python3.12/site-packages/pydantic/main.py", line 253, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for SensorInfo
+city
+  Field required [type=missing, input_value={'sensor_id': 'TEST-001',...ion_date': '2026-03-06'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing
+WARNING:  WatchFiles detected changes in 'main.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [211120]
+INFO:     Started server process [211280]
+INFO:     Waiting for application startup.
+2026-03-15 00:07:47  INFO      Request URL: 'https://priyansh.blob.core.windows.net/vayu-hot-storage?restype=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-version': 'REDACTED'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.28.0 Python/3.12.3 (Linux-6.14.0-37-generic-x86_64-with-glibc2.41)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': 'e5e6b91a-1fd4-11f1-aac0-3003c895ccf5'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+2026-03-15 00:07:50  INFO      Response status: 200
+Response headers:
+    'Content-Length': '0'
+    'Last-Modified': 'Fri, 13 Mar 2026 00:38:33 GMT'
+    'ETag': '"0x8DE8098DB24882F"'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': 'f0604144-001e-0028-59e1-b3ba80000000'
+    'x-ms-client-request-id': 'e5e6b91a-1fd4-11f1-aac0-3003c895ccf5'
+    'x-ms-version': 'REDACTED'
+    'x-ms-lease-status': 'REDACTED'
+    'x-ms-lease-state': 'REDACTED'
+    'x-ms-has-immutability-policy': 'REDACTED'
+    'x-ms-has-legal-hold': 'REDACTED'
+    'x-ms-immutable-storage-with-versioning-enabled': 'REDACTED'
+    'x-ms-default-encryption-scope': 'REDACTED'
+    'x-ms-deny-encryption-scope-override': 'REDACTED'
+    'Date': 'Sat, 14 Mar 2026 18:37:49 GMT'
+2026-03-15 00:07:50  INFO      Request URL: 'https://priyansh.blob.core.windows.net/vayu-cold-storage?restype=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-version': 'REDACTED'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.28.0 Python/3.12.3 (Linux-6.14.0-37-generic-x86_64-with-glibc2.41)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': 'e79d782a-1fd4-11f1-aac0-3003c895ccf5'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+2026-03-15 00:07:50  INFO      Response status: 200
+Response headers:
+    'Content-Length': '0'
+    'Last-Modified': 'Fri, 13 Mar 2026 00:38:33 GMT'
+    'ETag': '"0x8DE8098DB4F131E"'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': 'f0604221-001e-0028-1ee1-b3ba80000000'
+    'x-ms-client-request-id': 'e79d782a-1fd4-11f1-aac0-3003c895ccf5'
+    'x-ms-version': 'REDACTED'
+    'x-ms-lease-status': 'REDACTED'
+    'x-ms-lease-state': 'REDACTED'
+    'x-ms-has-immutability-policy': 'REDACTED'
+    'x-ms-has-legal-hold': 'REDACTED'
+    'x-ms-immutable-storage-with-versioning-enabled': 'REDACTED'
+    'x-ms-default-encryption-scope': 'REDACTED'
+    'x-ms-deny-encryption-scope-override': 'REDACTED'
+    'Date': 'Sat, 14 Mar 2026 18:37:49 GMT'
+2026-03-15 00:07:50  INFO      Loading state_dict from /home/priyansh/Desktop/VAYU/Vayu-Rakshak/air_quality_model.pth ...
+2026-03-15 00:07:51  INFO      Model loaded from .pth state_dict + reconstructed architecture.
+2026-03-15 00:07:51  INFO      🔥 PyTorch model pre-warmed and ready.
+INFO:     Application startup complete.
+✅ Database initialized — tables created (or already exist).
+INFO:     127.0.0.1:46552 - "GET /sensors HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36328 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36336 - "GET /sensors HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36350 - "GET /city_aqi?city=Delhi HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36358 - "GET /readings?anomaly_only=false&limit=5000 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36362 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36374 - "GET /sensor_health/TEST-001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36390 - "GET /sensor_health/part%202 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36396 - "GET /sensor_health/part%203 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36400 - "GET /sensor_health/test%200042 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36412 - "GET /sensor_health/DEL-2001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36414 - "GET /sensor_health/DEL-2002 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36418 - "GET /sensor_health/DEL-2003 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36426 - "GET /sensor_health/DEL-2004 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36434 - "GET /sensor_health/DEL-2005 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36440 - "GET /sensor_health/DEL-2006 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36446 - "GET /sensor_health/DEL-2007 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36452 - "GET /sensor_health/DEL-2008 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36462 - "GET /sensor_health/DEL-2009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36474 - "GET /sensor_health/DEL-2010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36476 - "GET /sensor_health/DEL-2011 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36480 - "GET /sensor_health/DEL-2012 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36486 - "GET /sensor_health/DEL-2013 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36494 - "GET /sensor_health/DEL-2014 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36500 - "GET /sensor_health/DEL-2015 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36510 - "GET /sensor_health/DEL-2016 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36524 - "GET /sensor_health/DEL-2017 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36538 - "GET /sensor_health/DEL-2018 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36544 - "GET /sensor_health/DEL-2019 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "GET /sensor_health/DEL-2020 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36568 - "GET /sensor_health/DEL-2021 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36584 - "GET /sensor_health/DEL-2022 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36588 - "GET /sensor_health/DEL-2023 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36590 - "GET /sensor_health/DEL-2024 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36606 - "GET /sensor_health/DEL-2025 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36608 - "GET /sensor_health/DEL-2026 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44218 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44222 - "GET /readings?anomaly_only=false&limit=5000 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44236 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44250 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44266 - "GET /analyze_sensor/TEST-001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44272 - "GET /readings/TEST-001 HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'azure_storage.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [211280]
+INFO:     Started server process [213684]
+INFO:     Waiting for application startup.
+2026-03-15 00:16:08  INFO      Request URL: 'https://priyansh.blob.core.windows.net/vayu-hot-storage?restype=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-version': 'REDACTED'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.28.0 Python/3.12.3 (Linux-6.14.0-37-generic-x86_64-with-glibc2.41)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': '10318294-1fd6-11f1-bea5-3003c895ccf5'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+2026-03-15 00:16:11  INFO      Response status: 200
+Response headers:
+    'Content-Length': '0'
+    'Last-Modified': 'Fri, 13 Mar 2026 00:38:33 GMT'
+    'ETag': '"0x8DE8098DB24882F"'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': '99fa8ded-801e-0054-2be2-b3947f000000'
+    'x-ms-client-request-id': '10318294-1fd6-11f1-bea5-3003c895ccf5'
+    'x-ms-version': 'REDACTED'
+    'x-ms-lease-status': 'REDACTED'
+    'x-ms-lease-state': 'REDACTED'
+    'x-ms-has-immutability-policy': 'REDACTED'
+    'x-ms-has-legal-hold': 'REDACTED'
+    'x-ms-immutable-storage-with-versioning-enabled': 'REDACTED'
+    'x-ms-default-encryption-scope': 'REDACTED'
+    'x-ms-deny-encryption-scope-override': 'REDACTED'
+    'Date': 'Sat, 14 Mar 2026 18:46:10 GMT'
+2026-03-15 00:16:11  INFO      Request URL: 'https://priyansh.blob.core.windows.net/vayu-cold-storage?restype=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-version': 'REDACTED'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.28.0 Python/3.12.3 (Linux-6.14.0-37-generic-x86_64-with-glibc2.41)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': '120c829e-1fd6-11f1-bea5-3003c895ccf5'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+2026-03-15 00:16:11  INFO      Response status: 200
+Response headers:
+    'Content-Length': '0'
+    'Last-Modified': 'Fri, 13 Mar 2026 00:38:33 GMT'
+    'ETag': '"0x8DE8098DB4F131E"'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': '99fa8ea3-801e-0054-4ae2-b3947f000000'
+    'x-ms-client-request-id': '120c829e-1fd6-11f1-bea5-3003c895ccf5'
+    'x-ms-version': 'REDACTED'
+    'x-ms-lease-status': 'REDACTED'
+    'x-ms-lease-state': 'REDACTED'
+    'x-ms-has-immutability-policy': 'REDACTED'
+    'x-ms-has-legal-hold': 'REDACTED'
+    'x-ms-immutable-storage-with-versioning-enabled': 'REDACTED'
+    'x-ms-default-encryption-scope': 'REDACTED'
+    'x-ms-deny-encryption-scope-override': 'REDACTED'
+    'Date': 'Sat, 14 Mar 2026 18:46:10 GMT'
+2026-03-15 00:16:11  INFO      Loading state_dict from /home/priyansh/Desktop/VAYU/Vayu-Rakshak/air_quality_model.pth ...
+2026-03-15 00:16:11  INFO      Model loaded from .pth state_dict + reconstructed architecture.
+2026-03-15 00:16:11  INFO      🔥 PyTorch model pre-warmed and ready.
+INFO:     Application startup complete.

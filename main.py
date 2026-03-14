@@ -41,6 +41,7 @@ from database import (
     get_db,
 )
 from model_utils import predict as model_predict, load_model
+from azure_storage import initialize_containers, upload_reading_hot, archive_to_cold
 
 # ─────────────────────────────────────────────
 # App Setup
@@ -77,6 +78,8 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     init_db()
+    # Initialize Azure Containers
+    initialize_containers()
     # Pre-warm the model so the first /predict call is fast
     try:
         load_model()
@@ -92,6 +95,7 @@ async def on_startup():
 class SensorRegisterRequest(BaseModel):
     sensor_id:     str = Field(..., example="ARI-1885")
     location_name: str = Field(..., example="Kashmiri Gate, Delhi")
+    city:          str = Field("Delhi", example="Delhi")
     lat:           float = Field(..., example=28.6667)
     long:          float = Field(..., example=77.2283)
     installation_date: Optional[str] = Field(None, example="2025-01-15")
@@ -104,6 +108,7 @@ class SensorRegisterResponse(BaseModel):
 class SensorInfo(BaseModel):
     sensor_id:         str
     location_name:     str
+    city:              str
     lat:               float
     long:              float
     installation_date: Optional[str]
@@ -256,6 +261,13 @@ def alert_high_pollution(sensor_id: str, pm2p5_corrected: float, is_anomaly: int
 def health():
     return {"status": "ok", "service": "Vayu-Rakshak API"}
 
+# ── Archival ──────────────────────────────────────────────────────────────
+
+@app.post("/archive", tags=["System"], summary="Archive older blobs from Hot to Cold Azure Storage")
+def archive_blobs(limit: int = 100):
+    archived_count = archive_to_cold(limit)
+    return {"status": "success", "archived_count": archived_count}
+
 
 # ── Sensor Registration ───────────────────────────────────────────────────
 
@@ -296,6 +308,7 @@ def register_sensor(payload: SensorRegisterRequest, db: Session = Depends(get_db
     sensor = SensorRegistry(
         sensor_id=payload.sensor_id,
         location_name=payload.location_name,
+        city=payload.city,
         lat=payload.lat,
         long=payload.long,
         installation_date=inst_date,
@@ -327,6 +340,7 @@ def list_sensors(db: Session = Depends(get_db)):
         SensorInfo(
             sensor_id=s.sensor_id,
             location_name=s.location_name,
+            city=s.city,
             lat=s.lat,
             long=s.long,
             installation_date=str(s.installation_date) if s.installation_date else None,
@@ -414,6 +428,9 @@ def ingest_reading(
             payload.pm2p5_corrected,
             payload.is_anomaly,
         )
+
+    # ── Async upload to Azure Hot Storage ────────────────────────────────
+    background_tasks.add_task(upload_reading_hot, payload.dict())
 
     logger.info(
         f"📥 Reading ingested: sensor={payload.sensor_id} "
@@ -866,11 +883,15 @@ def analyze_sensor(sensor_id: str, db: Session = Depends(get_db)):
     tags=["Advanced Analytics"],
     summary="City-level aggregated AQI from all sensors",
 )
-def city_aqi(db: Session = Depends(get_db)):
+def city_aqi(city: Optional[str] = None, db: Session = Depends(get_db)):
     """Compute city-wide AQI using IDW-weighted aggregation of all sensors."""
-    sensors = db.query(SensorRegistry).all()
+    query = db.query(SensorRegistry)
+    if city:
+        query = query.filter(SensorRegistry.city == city)
+    
+    sensors = query.all()
     if not sensors:
-        raise HTTPException(status_code=404, detail="No sensors registered.")
+        raise HTTPException(status_code=404, detail=f"No sensors registered for city: {city or 'any'}")
 
     city_center_lat = statistics.mean([s.lat for s in sensors])
     city_center_lon = statistics.mean([s.long for s in sensors])
@@ -947,7 +968,7 @@ def city_aqi(db: Session = Depends(get_db)):
     health_risk = min(10, overall_aqi / 30)
 
     return CityAQIResponse(
-        city_name="Delhi",
+        city_name=city if city else "All Sensors",
         overall_aqi=round(overall_aqi, 1),
         aqi_category=_aqi_category(overall_aqi),
         total_sensors=len(sensors),

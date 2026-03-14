@@ -40,7 +40,7 @@ pip install -r requirements.txt
 ### 3. Configure environment
 ```bash
 cp .env.example .env
-# Edit .env and add your OpenAI API key (needed only for the chatbot)
+# Edit .env and add your OpenAI API key and Azure Storage Connection String
 nano .env
 ```
 
@@ -85,6 +85,7 @@ python seed_data.py
 | `GET`  | `/readings` | None | All readings (with coords) |
 | `GET`  | `/readings/{sensor_id}` | None | Sensor-specific readings |
 | `GET`  | `/health` | None | Health check |
+| `POST` | `/archive` | None | Archive older data from Hot to Cold Azure storage |
 
 ### Example: Register a sensor
 ```bash
@@ -135,6 +136,16 @@ Activate by entering your `OPENAI_API_KEY` in the sidebar.
 - Every sensor registration generates a **UUID v4 api_key**
 - The `/ingest` endpoint refuses requests without a valid `x-api-key` header
 - Each sensor's key is validated against its own DB record (not globally shared)
+
+---
+
+## ☁️ Azure Storage Integration
+
+Vayu-Rakshak utilizes **Azure Blob Storage** for data durability and archiving, complementing the fast SQLite database used for the real-time dashboard.
+- **Hot Storage** (`vayu-hot-storage` container): Every reading sent to `/ingest` is simultaneously uploaded here.
+- **Cold Storage** (`vayu-cold-storage` container): Long-term archival. Triggered manually or via background jobs calling the `/archive` endpoint.
+
+To use this feature, simply provide your `AZURE_STORAGE_CONNECTION_STRING` in the `.env` file. The server will automatically create the containers on startup.
 
 ---
 

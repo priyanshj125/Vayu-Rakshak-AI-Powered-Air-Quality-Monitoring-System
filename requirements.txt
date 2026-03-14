@@ -33,3 +33,6 @@ openai>=1.30.0
 # ── HTTP / Geo ────────────────────────────────────────────
 requests>=2.31.0
 python-dotenv>=1.0.0
+
+# ── Azure Integration ─────────────────────────────────────
+azure-storage-blob>=12.19.0
