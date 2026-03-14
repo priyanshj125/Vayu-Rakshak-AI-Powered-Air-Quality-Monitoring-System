@@ -89,6 +89,48 @@ class SensorReadings(Base):
         )
 
 
+class AlertConfig(Base):
+    """Webhook/notification configuration for pollution alerts."""
+    __tablename__ = "alert_config"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    webhook_url    = Column(String, nullable=False)
+    alert_type     = Column(String, default="webhook")  # webhook / email / slack
+    threshold_pm25 = Column(Float, default=150.0)
+    is_active      = Column(Integer, default=1)
+    label          = Column(String, default="Default Alert")
+    created_at     = Column(DateTime, default=datetime.utcnow)
+
+
+class AlertHistory(Base):
+    """Log of all fired alerts for audit trail."""
+    __tablename__ = "alert_history"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    sensor_id   = Column(String, nullable=False)
+    message     = Column(String, nullable=False)
+    severity    = Column(String, default="high")  # low / medium / high / critical
+    pm25_value  = Column(Float)
+    delivered   = Column(Integer, default=0)  # 0=pending, 1=delivered, -1=failed
+    webhook_url = Column(String)
+    timestamp   = Column(DateTime, default=datetime.utcnow)
+
+
+class GeoFenceZone(Base):
+    """Sensitive zone definitions for geofence-based alerts."""
+    __tablename__ = "geofence_zones"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    name            = Column(String, nullable=False)
+    zone_type       = Column(String, default="school")  # school / hospital / park / residential
+    center_lat      = Column(Float, nullable=False)
+    center_lon      = Column(Float, nullable=False)
+    radius_m        = Column(Float, default=500.0)
+    pm25_threshold  = Column(Float, default=55.0)  # Unhealthy for Sensitive Groups
+    is_active       = Column(Integer, default=1)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+
+
 # ─────────────────────────────────────────────
 # DB Lifecycle Helpers
 # ─────────────────────────────────────────────

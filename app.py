@@ -245,6 +245,78 @@ def severity_color(s: str) -> str:
             "medium": "#e3b341", "low": "#3fb950"}.get(s, "#8b949e")
 
 
+def risk_color(level: str) -> str:
+    return {"critical": "#ff453a", "very_high": "#ff6b6b", "high": "#ff7b72",
+            "moderate": "#e3b341", "low": "#3fb950"}.get(level, "#8b949e")
+
+
+# ── New API fetch functions for advanced features ──
+
+def fetch_health_impact(sensor_id: str) -> dict:
+    try:
+        r = requests.get(f"{API_BASE}/health_impact/{sensor_id}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
+def fetch_city_health_impact(city: str = None) -> dict:
+    try:
+        params = {"city": city} if city else {}
+        r = requests.get(f"{API_BASE}/city_health_impact", params=params, timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
+def fetch_dispersion(sensor_id: str, wind_speed: float = 3.0, wind_dir: float = 225.0) -> dict:
+    try:
+        r = requests.get(f"{API_BASE}/dispersion/{sensor_id}",
+                         params={"wind_speed": wind_speed, "wind_direction": wind_dir}, timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
+def fetch_alert_history(limit: int = 20) -> list:
+    try:
+        r = requests.get(f"{API_BASE}/alerts/history", params={"limit": limit}, timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return []
+
+
+def fetch_geofences() -> list:
+    try:
+        r = requests.get(f"{API_BASE}/geofences", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return []
+
+
+def fetch_geofence_alerts() -> dict:
+    try:
+        r = requests.get(f"{API_BASE}/geofence_alerts", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return {}
+
+
+def fetch_city_comparison() -> dict:
+    try:
+        r = requests.get(f"{API_BASE}/city_comparison", timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
 # ─────────────────────────────────────────────
 # Session State Initialization
 # ─────────────────────────────────────────────
@@ -272,7 +344,7 @@ with st.sidebar:
     st.markdown("---")
 
     # Find index of current tab in list for radio default
-    tab_list = ["🗺️ Dashboard", "🧠 AI Analysis", "🚨 Surveillance", "➕ Register Sensor", "📈 Historical Analytics"]
+    tab_list = ["🗺️ Dashboard", "🧠 AI Analysis", "🚨 Surveillance", "➕ Register Sensor", "📈 Historical Analytics", "🏙️ City Comparison"]
     try:
         tab_index = tab_list.index(st.session_state.ui_target["tab"])
     except ValueError:
@@ -517,6 +589,93 @@ if page == "🗺️ Dashboard":
                     unsafe_allow_html=True,
                 )
 
+        # ── City Health Impact Summary (Feature 3) ──
+        st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+        st.markdown("##### ❤️ City Health Impact Assessment")
+        health_data = fetch_city_health_impact(selected_city)
+        if health_data:
+            adv_col = "#ff453a" if "RED" in health_data["advisory_level"] else "#f0883e" if "ORANGE" in health_data["advisory_level"] else "#e3b341" if "YELLOW" in health_data["advisory_level"] else "#3fb950"
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #1a0a2e, #16213e); border:1px solid {adv_col}55;
+                        border-radius:12px; padding:1.2rem; margin-bottom:0.8rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+                    <div>
+                        <h4 style="margin:0; color:{adv_col};">{health_data["advisory_level"]}</h4>
+                        <p style="color:#b2ebf2; margin:4px 0;">Est. Population Exposed: <b>{health_data["estimated_population_affected"]:,}</b></p>
+                    </div>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            """, unsafe_allow_html=True)
+            for risk in health_data.get("health_risks", [])[:4]:
+                rc = risk_color(risk["risk_level"])
+                st.markdown(f"""
+                <div style="text-align:center; min-width:70px;">
+                    <div style="font-size:1.5rem;">{risk["icon"]}</div>
+                    <div style="font-size:0.7rem; color:#8b949e;">{risk["risk_type"]}</div>
+                    <div style="color:{rc}; font-weight:700; font-size:1.1rem;">{risk["score"]:.0f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown("</div></div></div>", unsafe_allow_html=True)
+
+        # ── PDF Report Button (Feature 4) ──
+        st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+        report_col1, report_col2 = st.columns([3, 1])
+        with report_col1:
+            st.markdown("##### 📄 Generate Professional Report")
+            st.caption("Download a comprehensive PDF report with charts, analysis, and AI recommendations.")
+        with report_col2:
+            city_for_report = selected_city or "Delhi"
+            if st.button("📄 Generate PDF Report", use_container_width=True, key="gen_report_btn"):
+                with st.spinner("Generating report..."):
+                    try:
+                        r = requests.get(f"{API_BASE}/report/{city_for_report}", timeout=30)
+                        if r.status_code == 200:
+                            st.download_button(
+                                label="⬇️ Download Report",
+                                data=r.content,
+                                file_name=f"vayu_rakshak_{city_for_report}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True,
+                                key="download_report_btn",
+                            )
+                        else:
+                            st.error(f"Report generation failed: {r.status_code}")
+                    except Exception as e:
+                        st.error(f"Could not generate report: {e}")
+
+        # ── Geofence Zones on Map (Feature 5) ──
+        geofences = fetch_geofences()
+        if geofences:
+            st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+            st.markdown("##### 🛡️ Geofence Alert Zones")
+            breached = [g for g in geofences if g.get("is_breached")]
+            safe = [g for g in geofences if not g.get("is_breached")]
+            bc1, bc2 = st.columns(2)
+            with bc1:
+                st.metric("🛡️ Total Zones", len(geofences))
+            with bc2:
+                st.metric("⚠️ Breached Zones", len(breached), delta=f"{len(breached)} active", delta_color="inverse")
+            for g in breached:
+                zone_icon = {"school": "🏫", "hospital": "🏥", "park": "🌳", "residential": "🏘️"}.get(g["zone_type"], "📍")
+                st.markdown(f"""
+                <div style="background:#2d1515; border:1px solid #ff454555; border-radius:8px;
+                            padding:0.6rem 1rem; margin-bottom:0.4rem;">
+                    {zone_icon} <b style="color:#ff6b6b;">{g['name']}</b>
+                    — PM2.5: <b style="color:#ff7b72;">{g.get('current_pm25', 'N/A')} µg/m³</b>
+                    (threshold: {g['pm25_threshold']})
+                    <span style="float:right; color:#ff453a; font-size:0.75rem;">⚠️ BREACHED</span>
+                </div>
+                """, unsafe_allow_html=True)
+            for g in safe[:3]:
+                zone_icon = {"school": "🏫", "hospital": "🏥", "park": "🌳", "residential": "🏘️"}.get(g["zone_type"], "📍")
+                st.markdown(f"""
+                <div style="background:#0d2818; border:1px solid #3fb95033; border-radius:8px;
+                            padding:0.6rem 1rem; margin-bottom:0.4rem;">
+                    {zone_icon} <b style="color:#3fb950;">{g['name']}</b>
+                    — PM2.5: <b>{g.get('current_pm25', 'N/A')} µg/m³</b>
+                    <span style="float:right; color:#3fb950; font-size:0.75rem;">✅ SAFE</span>
+                </div>
+                """, unsafe_allow_html=True)
+
 # ═══════════════════════════════════════════════════════
 # TAB: 🧠 AI ANALYSIS
 # ═══════════════════════════════════════════════════════
@@ -701,6 +860,102 @@ elif page == "🧠 AI Analysis":
                     )
                     st.plotly_chart(fig_drift, use_container_width=True)
 
+            # ── Health Impact Panel (Feature 3) ──
+            st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+            st.markdown("##### ❤️ Health Impact Assessment")
+            health_impact = fetch_health_impact(analysis_sensor)
+            if health_impact:
+                # Safe exposure + population
+                hi_col1, hi_col2, hi_col3 = st.columns(3)
+                safe_hrs = health_impact["exposure_duration_safe_hours"]
+                safe_color = "#3fb950" if safe_hrs > 8 else "#e3b341" if safe_hrs > 2 else "#ff453a"
+                hi_col1.markdown(f"""
+                <div style="background:#161b22; border:1px solid {safe_color}55; border-radius:10px;
+                            padding:1rem; text-align:center;">
+                    <div style="font-size:2rem; color:{safe_color}; font-weight:700;">{safe_hrs:.1f}h</div>
+                    <div style="color:#8b949e; font-size:0.8rem;">Safe Outdoor Exposure</div>
+                </div>
+                """, unsafe_allow_html=True)
+                hi_col2.markdown(f"""
+                <div style="background:#161b22; border:1px solid #58a6ff55; border-radius:10px;
+                            padding:1rem; text-align:center;">
+                    <div style="font-size:2rem; color:#58a6ff; font-weight:700;">{health_impact['estimated_population_exposed']:,}</div>
+                    <div style="color:#8b949e; font-size:0.8rem;">People Exposed (1km)</div>
+                </div>
+                """, unsafe_allow_html=True)
+                vuln_count = len(health_impact.get("vulnerable_groups", []))
+                vuln_color = "#ff453a" if vuln_count > 4 else "#e3b341" if vuln_count > 2 else "#3fb950"
+                hi_col3.markdown(f"""
+                <div style="background:#161b22; border:1px solid {vuln_color}55; border-radius:10px;
+                            padding:1rem; text-align:center;">
+                    <div style="font-size:2rem; color:{vuln_color}; font-weight:700;">{vuln_count}</div>
+                    <div style="color:#8b949e; font-size:0.8rem;">Vulnerable Groups</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Health risk bars
+                for risk in health_impact.get("health_risks", []):
+                    rc = risk_color(risk["risk_level"])
+                    st.markdown(f"""
+                    <div style="margin-bottom:0.5rem;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+                            <span>{risk['icon']} {risk['risk_type']}</span>
+                            <span style="color:{rc}; font-weight:600;">{risk['score']:.0f}% — {risk['risk_level'].upper()}</span>
+                        </div>
+                        <div style="background:#21262d; border-radius:6px; height:8px; overflow:hidden;">
+                            <div style="background:{rc}; height:100%; width:{risk['score']}%;
+                                        border-radius:6px;"></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            # ── Dispersion Model (Feature 2) ──
+            st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+            st.markdown("##### 🌬️ Pollution Dispersion Prediction")
+            st.caption("Gaussian plume model showing predicted pollution spread based on wind conditions.")
+            disp_col1, disp_col2 = st.columns(2)
+            with disp_col1:
+                wind_speed_input = st.slider("Wind Speed (m/s)", 0.5, 15.0, 3.0, 0.5, key="wind_speed_sl")
+            with disp_col2:
+                wind_dir_input = st.slider("Wind Direction (°)", 0, 360, 225, 15, key="wind_dir_sl")
+
+            dispersion = fetch_dispersion(analysis_sensor, wind_speed_input, wind_dir_input)
+            if dispersion and dispersion.get("grid"):
+                st.markdown(f"""
+                <div style="background:#161b22; border:1px solid #58a6ff33; border-radius:10px;
+                            padding:0.8rem 1rem; margin-bottom:0.8rem;">
+                    <span style="color:#58a6ff;">📊 Stability: <b>{dispersion['stability_class']}</b></span>
+                    &nbsp;|&nbsp; Affected Area: <b>{dispersion['affected_area_km2']} km²</b>
+                    &nbsp;|&nbsp; Source: <b>{dispersion['source_pm25']} µg/m³</b>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Dispersion heatmap on folium
+                disp_map = folium.Map(
+                    location=[st.session_state.ui_target["lat"], st.session_state.ui_target["lon"]],
+                    zoom_start=13, tiles="CartoDB dark_matter",
+                )
+                disp_map.get_root().html.add_child(folium.Element("<style>.leaflet-control-attribution {display: none !important;}</style>"))
+                for pt in dispersion["grid"]:
+                    conc = pt["concentration"]
+                    max_conc = dispersion["source_pm25"] * 2
+                    opacity = min(0.7, conc / max(max_conc, 1) * 0.8)
+                    color = pm25_color(conc)
+                    folium.CircleMarker(
+                        location=[pt["lat"], pt["lon"]], radius=8,
+                        color=color, fill=True, fill_color=color, fill_opacity=opacity,
+                        weight=0,
+                        tooltip=f"Predicted: {conc:.1f} µg/m³",
+                    ).add_to(disp_map)
+                # Source marker
+                folium.CircleMarker(
+                    location=[st.session_state.ui_target["lat"], st.session_state.ui_target["lon"]],
+                    radius=10, color="#ffffff", fill=True, fill_color="#ff453a",
+                    fill_opacity=0.9, weight=2,
+                    tooltip=f"Source: {dispersion['source_pm25']} µg/m³",
+                ).add_to(disp_map)
+                st_folium(disp_map, use_container_width=True, height=400, key="dispersion_map")
+
 # ═══════════════════════════════════════════════════════
 # TAB: SURVEILLANCE
 # ═══════════════════════════════════════════════════════
@@ -781,6 +1036,32 @@ elif page == "🚨 Surveillance":
                 use_container_width=True,
                 height=400,
             )
+
+    # ── Alert Center (Feature 1) ──
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown("##### 🔔 Alert Center")
+    st.caption("Recent pollution alerts fired by the real-time alert system.")
+    alerts = fetch_alert_history(20)
+    if alerts:
+        for alert in alerts[:10]:
+            sev_col = severity_color(alert["severity"])
+            delivered_icon = "✅" if alert["delivered"] == 1 else "❌" if alert["delivered"] == -1 else "⏳"
+            st.markdown(f"""
+            <div style="background:#161b22; border-left:3px solid {sev_col};
+                        border-radius:0 8px 8px 0; padding:0.5rem 1rem; margin-bottom:0.4rem;">
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:#e6edf3; font-size:0.85rem;">{alert['message'][:80]}...</span>
+                    <span style="color:{sev_col}; font-size:0.7rem; text-transform:uppercase;">
+                        {alert['severity']} {delivered_icon}
+                    </span>
+                </div>
+                <div style="color:#8b949e; font-size:0.7rem; margin-top:2px;">
+                    {alert['timestamp']} &nbsp;|&nbsp; PM2.5: {alert.get('pm25_value', 'N/A')} µg/m³
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("No alerts fired yet. Configure webhooks via the API: POST /alerts/configure")
 
 
 # ═══════════════════════════════════════════════════════
@@ -998,6 +1279,132 @@ elif page == "📈 Historical Analytics":
                     ]].sort_values("timestamp", ascending=False),
                     use_container_width=True,
                 )
+
+
+# ═══════════════════════════════════════════════════════
+# TAB: 🏙️ CITY COMPARISON (Feature 6)
+# ═══════════════════════════════════════════════════════
+elif page == "🏙️ City Comparison":
+    st.markdown('<p class="tab-header">🏙️ Multi-City Comparative Analytics</p>', unsafe_allow_html=True)
+    st.markdown("Compare air quality, sensor health, and trends across all monitored cities.")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+    comparison = fetch_city_comparison()
+    if not comparison or not comparison.get("cities"):
+        st.info("No city data available for comparison.")
+    else:
+        cities = comparison["cities"]
+
+        # Best vs Worst hero cards
+        hero_col1, hero_col2 = st.columns(2)
+        with hero_col1:
+            best = next((c for c in cities if c["city"] == comparison["best_city"]), cities[0])
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg, #0d2818, #1a4d2e); border:1px solid #3fb95055;
+                        border-radius:14px; padding:1.2rem; text-align:center;">
+                <div style="font-size:0.8rem; color:#3fb950; text-transform:uppercase;">🏆 Best Air Quality</div>
+                <div style="font-size:2rem; font-weight:700; color:#3fb950; margin:4px 0;">{best['city']}</div>
+                <div style="color:#b2ebf2;">{best['aqi']:.0f} AQI — {best['aqi_category']}</div>
+                <div style="color:#8b949e; font-size:0.8rem; margin-top:4px;">
+                    {best['active_sensors']}/{best['sensor_count']} sensors | Grade: {best['health_grade']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        with hero_col2:
+            worst = next((c for c in cities if c["city"] == comparison["worst_city"]), cities[-1])
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg, #2d1515, #4d1a1a); border:1px solid #ff453a55;
+                        border-radius:14px; padding:1.2rem; text-align:center;">
+                <div style="font-size:0.8rem; color:#ff6b6b; text-transform:uppercase;">⚠️ Worst Air Quality</div>
+                <div style="font-size:2rem; font-weight:700; color:#ff453a; margin:4px 0;">{worst['city']}</div>
+                <div style="color:#b2ebf2;">{worst['aqi']:.0f} AQI — {worst['aqi_category']}</div>
+                <div style="color:#8b949e; font-size:0.8rem; margin-top:4px;">
+                    {worst['active_sensors']}/{worst['sensor_count']} sensors | Grade: {worst['health_grade']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+        # AQI Comparison Bar Chart
+        st.markdown("##### 📊 AQI Comparison")
+        city_names = [c["city"] for c in cities]
+        city_aqis = [c["aqi"] for c in cities]
+        bar_colors = [pm25_color(a) for a in city_aqis]
+
+        fig_bar = go.Figure(data=[go.Bar(
+            x=city_names, y=city_aqis,
+            marker_color=bar_colors,
+            text=[f"{a:.0f}" for a in city_aqis],
+            textposition="outside",
+            textfont=dict(color="#e6edf3"),
+        )])
+        fig_bar.add_hline(y=150, line_dash="dash", line_color="#ff7b72", line_width=1,
+                          annotation_text="Hazardous", annotation_font_color="#ff7b72")
+        fig_bar.add_hline(y=55, line_dash="dash", line_color="#e3b341", line_width=1,
+                          annotation_text="Unhealthy for Sensitive", annotation_font_color="#e3b341")
+        fig_bar.update_layout(
+            paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
+            font=dict(color="#e6edf3"), height=350,
+            xaxis=dict(gridcolor="#21262d", color="#8b949e"),
+            yaxis=dict(title="PM2.5 AQI", gridcolor="#21262d", color="#8b949e"),
+            margin=dict(t=30, b=40, l=50, r=20),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+        # Radar Chart
+        st.markdown("##### 🕸️ City Performance Radar")
+        categories_radar = ["AQI (inv)", "Coverage %", "Health Score", "Low Anomaly %", "Trend Stability"]
+
+        fig_radar = go.Figure()
+        for c in cities:
+            # Normalize: lower AQI = better → invert
+            aqi_inv = max(0, 100 - (c["aqi"] / 3))  # 300 AQI → 0, 0 AQI → 100
+            anomaly_inv = max(0, 100 - c["anomaly_rate"] * 5)
+            trend_score = 80 if c["trend"] == "stable" else 50 if c["trend"] == "falling" else 30
+
+            fig_radar.add_trace(go.Scatterpolar(
+                r=[aqi_inv, c["coverage_pct"], c["avg_health_score"], anomaly_inv, trend_score],
+                theta=categories_radar,
+                fill="toself",
+                name=c["city"],
+                opacity=0.6,
+            ))
+
+        fig_radar.update_layout(
+            polar=dict(
+                bgcolor="#161b22",
+                radialaxis=dict(visible=True, range=[0, 100], gridcolor="#30363d", color="#8b949e"),
+                angularaxis=dict(gridcolor="#30363d", color="#e6edf3"),
+            ),
+            paper_bgcolor="#0d1117",
+            font=dict(color="#e6edf3"),
+            height=400,
+            margin=dict(t=40, b=40, l=80, r=80),
+            showlegend=True,
+            legend=dict(bgcolor="rgba(0,0,0,0)"),
+        )
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+        # Rankings Table
+        st.markdown("##### 🏅 City Rankings")
+        rank_data = []
+        for i, c in enumerate(cities):
+            grade_color = {"A": "🟢", "B": "🔵", "C": "🟡", "D": "🟠", "F": "🔴"}.get(c["health_grade"], "⚪")
+            trend_icon = {"rising": "📈", "falling": "📉", "stable": "➡️"}.get(c["trend"], "➡️")
+            rank_data.append({
+                "Rank": i + 1,
+                "City": c["city"],
+                "AQI": f"{c['aqi']:.0f}",
+                "Category": c["aqi_category"],
+                "Sensors": f"{c['active_sensors']}/{c['sensor_count']}",
+                "Health": f"{grade_color} {c['health_grade']} ({c['avg_health_score']:.0f})",
+                "Anomaly %": f"{c['anomaly_rate']:.1f}%",
+                "Trend": f"{trend_icon} {c['trend']}",
+                "Coverage": f"{c['coverage_pct']:.0f}%",
+            })
+        st.dataframe(pd.DataFrame(rank_data), use_container_width=True, hide_index=True)
 
 
 # ═══════════════════════════════════════════════════════

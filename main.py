@@ -27,6 +27,7 @@ from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict, Any
 from collections import defaultdict
 
+import io
 import numpy as np
 from fastapi import FastAPI, Depends, HTTPException, Header, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,6 +38,9 @@ from sqlalchemy import func
 from database import (
     SensorRegistry,
     SensorReadings,
+    AlertConfig,
+    AlertHistory,
+    GeoFenceZone,
     init_db,
     get_db,
 )
@@ -224,16 +228,122 @@ class DriftSimulationResponse(BaseModel):
     message: str
 
 
+# ── Schemas for new advanced features ──
+
+class AlertConfigRequest(BaseModel):
+    webhook_url: str = Field(..., example="https://hooks.slack.com/services/XXX")
+    alert_type: str = Field("webhook", example="webhook")
+    threshold_pm25: float = Field(150.0, example=150.0)
+    label: str = Field("My Alert", example="Slack Critical Alert")
+
+class AlertConfigResponse(BaseModel):
+    id: int
+    webhook_url: str
+    alert_type: str
+    threshold_pm25: float
+    label: str
+    is_active: int
+
+class AlertHistoryOut(BaseModel):
+    id: int
+    sensor_id: str
+    message: str
+    severity: str
+    pm25_value: Optional[float]
+    delivered: int
+    webhook_url: Optional[str]
+    timestamp: str
+
+class DispersionPoint(BaseModel):
+    lat: float
+    lon: float
+    concentration: float  # predicted PM2.5
+
+class DispersionResponse(BaseModel):
+    sensor_id: str
+    source_pm25: float
+    wind_speed: float
+    wind_direction: float  # degrees
+    stability_class: str
+    grid: List[DispersionPoint]
+    affected_area_km2: float
+
+class HealthRisk(BaseModel):
+    risk_type: str
+    risk_level: str  # low / moderate / high / very_high / critical
+    score: float  # 0-100
+    description: str
+    icon: str
+
+class HealthImpactResponse(BaseModel):
+    sensor_id: str
+    location_name: str
+    current_pm25: float
+    aqi_category: str
+    exposure_duration_safe_hours: float
+    health_risks: List[HealthRisk]
+    vulnerable_groups: List[str]
+    recommendations: List[str]
+    estimated_population_exposed: int  # within 1km radius estimate
+
+class CityHealthImpactResponse(BaseModel):
+    city_name: str
+    overall_aqi: float
+    estimated_population_affected: int
+    health_risks: List[HealthRisk]
+    zone_breakdown: List[Dict[str, Any]]
+    advisory_level: str
+    recommendations: List[str]
+
+class GeoFenceRequest(BaseModel):
+    name: str = Field(..., example="Delhi Public School")
+    zone_type: str = Field("school", example="school")
+    center_lat: float = Field(..., example=28.6139)
+    center_lon: float = Field(..., example=77.2090)
+    radius_m: float = Field(500.0, example=500.0)
+    pm25_threshold: float = Field(55.0, example=55.0)
+
+class GeoFenceOut(BaseModel):
+    id: int
+    name: str
+    zone_type: str
+    center_lat: float
+    center_lon: float
+    radius_m: float
+    pm25_threshold: float
+    is_active: int
+    current_pm25: Optional[float] = None
+    is_breached: Optional[bool] = None
+
+class CityComparisonEntry(BaseModel):
+    city: str
+    aqi: float
+    aqi_category: str
+    sensor_count: int
+    active_sensors: int
+    avg_health_score: float
+    health_grade: str
+    anomaly_rate: float
+    trend: str
+    coverage_pct: float
+
+class CityComparisonResponse(BaseModel):
+    cities: List[CityComparisonEntry]
+    best_city: str
+    worst_city: str
+    generated_at: str
+
+
 # ─────────────────────────────────────────────
-# Background Task: Alert
+# Background Task: Alert (Enhanced with Webhooks)
 # ─────────────────────────────────────────────
 
 def alert_high_pollution(sensor_id: str, pm2p5_corrected: float, is_anomaly: int):
     """
     Background task triggered when a reading is flagged as anomalous or
-    has critically high PM2.5 levels. Logs a 🚨 alert to the console.
-    In production this would trigger push notifications / PagerDuty / SMS.
+    has critically high PM2.5 levels. Fires configured webhooks and logs alerts.
     """
+    import requests as req_lib
     reasons = []
     if is_anomaly == 1:
         reasons.append("ANOMALY DETECTED")
@@ -241,14 +351,63 @@ def alert_high_pollution(sensor_id: str, pm2p5_corrected: float, is_anomaly: int
         reasons.append(f"HIGH PM2.5 ({pm2p5_corrected:.1f} µg/m³ > 150 threshold)")
 
     reason_str = " | ".join(reasons)
-    logger.critical(
-        f"🚨 ALERT: {reason_str} at Sensor [{sensor_id}]! "
-        f"Immediate investigation required."
-    )
-    # ── Future hooks ──────────────────────────────────────────────────────
-    # send_email_alert(sensor_id, reasons)
-    # send_slack_message(sensor_id, reasons)
-    # create_incident_ticket(sensor_id, reasons)
+    severity = "critical" if pm2p5_corrected > 200 else "high" if pm2p5_corrected > 150 else "medium"
+    message = f"🚨 ALERT: {reason_str} at Sensor [{sensor_id}]! Immediate investigation required."
+    
+    logger.critical(message)
+    
+    # Fire all active webhooks that match threshold
+    db = next(get_db())
+    try:
+        configs = db.query(AlertConfig).filter(
+            AlertConfig.is_active == 1,
+            AlertConfig.threshold_pm25 <= pm2p5_corrected,
+        ).all()
+        
+        for config in configs:
+            delivered = 0
+            try:
+                payload = {
+                    "text": message,
+                    "sensor_id": sensor_id,
+                    "pm25": pm2p5_corrected,
+                    "severity": severity,
+                    "timestamp": datetime.now().isoformat(),
+                    "source": "Vayu-Rakshak Alert System",
+                }
+                resp = req_lib.post(config.webhook_url, json=payload, timeout=5)
+                delivered = 1 if resp.status_code < 400 else -1
+            except Exception as e:
+                logger.error(f"Webhook delivery failed: {e}")
+                delivered = -1
+            
+            # Log alert
+            alert_log = AlertHistory(
+                sensor_id=sensor_id,
+                message=message,
+                severity=severity,
+                pm25_value=pm2p5_corrected,
+                delivered=delivered,
+                webhook_url=config.webhook_url,
+            )
+            db.add(alert_log)
+        
+        # Also log even without webhooks
+        if not configs:
+            alert_log = AlertHistory(
+                sensor_id=sensor_id,
+                message=message,
+                severity=severity,
+                pm25_value=pm2p5_corrected,
+                delivered=0,
+            )
+            db.add(alert_log)
+        
+        db.commit()
+    except Exception as e:
+        logger.error(f"Alert processing error: {e}")
+    finally:
+        db.close()
 
 
 # ─────────────────────────────────────────────
@@ -1137,3 +1296,640 @@ def simulate_drift(
         drift_magnitude=magnitude,
         message=f"Applied {drift_type} drift to {affected} readings. AI correction re-applied.",
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE 1: ALERT WEBHOOK SYSTEM
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post(
+    "/alerts/configure",
+    response_model=AlertConfigResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Alert System"],
+    summary="Register a webhook for pollution alerts",
+)
+def configure_alert(payload: AlertConfigRequest, db: Session = Depends(get_db)):
+    config = AlertConfig(
+        webhook_url=payload.webhook_url,
+        alert_type=payload.alert_type,
+        threshold_pm25=payload.threshold_pm25,
+        label=payload.label,
+    )
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return AlertConfigResponse(
+        id=config.id, webhook_url=config.webhook_url, alert_type=config.alert_type,
+        threshold_pm25=config.threshold_pm25, label=config.label, is_active=config.is_active,
+    )
+
+
+@app.get("/alerts/configs", response_model=List[AlertConfigResponse], tags=["Alert System"])
+def list_alert_configs(db: Session = Depends(get_db)):
+    configs = db.query(AlertConfig).all()
+    return [
+        AlertConfigResponse(
+            id=c.id, webhook_url=c.webhook_url, alert_type=c.alert_type,
+            threshold_pm25=c.threshold_pm25, label=c.label, is_active=c.is_active,
+        ) for c in configs
+    ]
+
+
+@app.get("/alerts/history", response_model=List[AlertHistoryOut], tags=["Alert System"])
+def alert_history(limit: int = 50, db: Session = Depends(get_db)):
+    alerts = db.query(AlertHistory).order_by(AlertHistory.timestamp.desc()).limit(limit).all()
+    return [
+        AlertHistoryOut(
+            id=a.id, sensor_id=a.sensor_id, message=a.message, severity=a.severity,
+            pm25_value=a.pm25_value, delivered=a.delivered, webhook_url=a.webhook_url,
+            timestamp=str(a.timestamp),
+        ) for a in alerts
+    ]
+
+
+@app.delete("/alerts/configure/{config_id}", tags=["Alert System"])
+def delete_alert_config(config_id: int, db: Session = Depends(get_db)):
+    config = db.query(AlertConfig).filter(AlertConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Alert config not found.")
+    db.delete(config)
+    db.commit()
+    return {"status": "deleted", "id": config_id}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE 2: GAUSSIAN PLUME DISPERSION MODEL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _gaussian_plume(x: float, y: float, Q: float, u: float, H: float,
+                     sigma_y: float, sigma_z: float) -> float:
+    """Gaussian plume concentration at point (x, y) from a source."""
+    if x <= 0 or u <= 0:
+        return 0.0
+    C = (Q / (2 * math.pi * u * sigma_y * sigma_z)) * \
+        math.exp(-0.5 * (y / sigma_y) ** 2) * \
+        (math.exp(-0.5 * ((0 - H) / sigma_z) ** 2) + math.exp(-0.5 * ((0 + H) / sigma_z) ** 2))
+    return max(0, C)
+
+
+def _stability_params(stability_class: str, x_km: float):
+    """Pasquill-Gifford dispersion coefficients."""
+    x_m = max(x_km * 1000, 100)
+    params = {
+        "A": (0.22, 0.20, 0.0001, 0.5),
+        "B": (0.16, 0.12, 0.0001, 0.5),
+        "C": (0.11, 0.08, 0.0001, 0.5),
+        "D": (0.08, 0.06, 0.0003, 0.5),
+        "E": (0.06, 0.03, 0.0003, 0.5),
+        "F": (0.04, 0.016, 0.0003, 0.5),
+    }
+    a, b, c, d = params.get(stability_class, params["D"])
+    sigma_y = a * x_m / (1 + c * x_m) ** d
+    sigma_z = b * x_m / (1 + c * x_m) ** d
+    return max(sigma_y, 1), max(sigma_z, 1)
+
+
+@app.get(
+    "/dispersion/{sensor_id}",
+    response_model=DispersionResponse,
+    tags=["Advanced Analytics"],
+    summary="Gaussian plume dispersion prediction",
+)
+def dispersion_model(sensor_id: str, wind_speed: float = 3.0,
+                      wind_direction: float = 225.0,
+                      db: Session = Depends(get_db)):
+    """
+    Computes a Gaussian plume model to predict how pollution spreads
+    from a sensor's location based on wind speed and direction.
+    """
+    sensor = db.query(SensorRegistry).filter(
+        SensorRegistry.sensor_id == sensor_id
+    ).first()
+    if not sensor:
+        raise HTTPException(status_code=404, detail=f"Sensor '{sensor_id}' not found.")
+
+    latest = (
+        db.query(SensorReadings)
+        .filter(SensorReadings.sensor_id == sensor_id)
+        .order_by(SensorReadings.timestamp.desc())
+        .first()
+    )
+    if not latest:
+        raise HTTPException(status_code=404, detail="No readings for this sensor.")
+
+    source_pm25 = latest.pm2p5_corrected or 50.0
+    Q = source_pm25 * 10  # Emission rate proxy
+
+    # Determine atmospheric stability from temperature/humidity
+    temp = latest.temperature or 25
+    humidity = latest.humidity or 50
+    if temp > 30 and humidity < 40:
+        stability = "A"
+    elif temp > 25:
+        stability = "B"
+    elif temp > 15:
+        stability = "D"
+    else:
+        stability = "E"
+
+    # Wind direction in radians (meteorological: from)
+    wind_rad = math.radians(wind_direction)
+
+    # Generate grid points (5km x 5km around sensor)
+    grid = []
+    total_area = 0
+    for dx_idx in range(-5, 6):
+        for dy_idx in range(-5, 6):
+            dx_km = dx_idx * 0.5  # 500m steps
+            dy_km = dy_idx * 0.5
+
+            # Rotate by wind direction
+            x_wind = dx_km * math.cos(wind_rad) + dy_km * math.sin(wind_rad)
+            y_wind = -dx_km * math.sin(wind_rad) + dy_km * math.cos(wind_rad)
+
+            if x_wind > 0:
+                sigma_y, sigma_z = _stability_params(stability, x_wind)
+                conc = _gaussian_plume(x_wind * 1000, y_wind * 1000, Q,
+                                       max(wind_speed, 0.5), 10, sigma_y, sigma_z)
+            else:
+                conc = source_pm25 * 0.1 * max(0, 1 - math.sqrt(dx_km**2 + dy_km**2) / 2)
+
+            # Convert km offset to lat/lon
+            lat_offset = dy_km / 111.0
+            lon_offset = dx_km / (111.0 * math.cos(math.radians(sensor.lat)))
+
+            if conc > 1:
+                total_area += 0.25  # 0.5km × 0.5km = 0.25 km²
+                grid.append(DispersionPoint(
+                    lat=round(sensor.lat + lat_offset, 6),
+                    lon=round(sensor.long + lon_offset, 6),
+                    concentration=round(min(conc, source_pm25 * 2), 2),
+                ))
+
+    return DispersionResponse(
+        sensor_id=sensor_id,
+        source_pm25=round(source_pm25, 1),
+        wind_speed=wind_speed,
+        wind_direction=wind_direction,
+        stability_class=stability,
+        grid=grid,
+        affected_area_km2=round(total_area, 2),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE 3: HEALTH IMPACT CALCULATOR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _compute_health_risks(pm25: float) -> List[HealthRisk]:
+    """WHO exposure-response function for PM2.5 health impacts."""
+    risks = []
+
+    # Respiratory risk
+    resp_score = min(100, pm25 * 0.6)
+    if resp_score > 75: resp_level = "critical"
+    elif resp_score > 50: resp_level = "very_high"
+    elif resp_score > 30: resp_level = "high"
+    elif resp_score > 15: resp_level = "moderate"
+    else: resp_level = "low"
+    risks.append(HealthRisk(
+        risk_type="Respiratory",
+        risk_level=resp_level,
+        score=round(resp_score, 1),
+        description=f"Asthma, bronchitis, and COPD exacerbation risk at {pm25:.0f} µg/m³",
+        icon="🫁",
+    ))
+
+    # Cardiovascular risk
+    cardio_score = min(100, pm25 * 0.45)
+    if cardio_score > 60: cardio_level = "critical"
+    elif cardio_score > 40: cardio_level = "high"
+    elif cardio_score > 20: cardio_level = "moderate"
+    else: cardio_level = "low"
+    risks.append(HealthRisk(
+        risk_type="Cardiovascular",
+        risk_level=cardio_level,
+        score=round(cardio_score, 1),
+        description="Heart attack, stroke, and arrhythmia risk from fine particle inhalation",
+        icon="❤️",
+    ))
+
+    # Neurological risk
+    neuro_score = min(100, pm25 * 0.25)
+    if neuro_score > 40: neuro_level = "high"
+    elif neuro_score > 20: neuro_level = "moderate"
+    else: neuro_level = "low"
+    risks.append(HealthRisk(
+        risk_type="Neurological",
+        risk_level=neuro_level,
+        score=round(neuro_score, 1),
+        description="Cognitive decline, headaches, and neuroinflammation from prolonged exposure",
+        icon="🧠",
+    ))
+
+    # Immune system
+    immune_score = min(100, pm25 * 0.3)
+    if immune_score > 45: immune_level = "high"
+    elif immune_score > 22: immune_level = "moderate"
+    else: immune_level = "low"
+    risks.append(HealthRisk(
+        risk_type="Immune System",
+        risk_level=immune_level,
+        score=round(immune_score, 1),
+        description="Weakened immune response increasing susceptibility to infections",
+        icon="🛡️",
+    ))
+
+    # Cancer risk (long-term)
+    cancer_score = min(100, pm25 * 0.15)
+    if cancer_score > 30: cancer_level = "high"
+    elif cancer_score > 15: cancer_level = "moderate"
+    else: cancer_level = "low"
+    risks.append(HealthRisk(
+        risk_type="Cancer (Long-term)",
+        risk_level=cancer_level,
+        score=round(cancer_score, 1),
+        description="IARC Group 1 carcinogen — long-term PM2.5 exposure linked to lung cancer",
+        icon="⚠️",
+    ))
+
+    return risks
+
+
+def _safe_exposure_hours(pm25: float) -> float:
+    """Estimate safe outdoor exposure duration based on PM2.5."""
+    if pm25 < 12: return 24.0
+    if pm25 < 35: return 12.0
+    if pm25 < 55: return 4.0
+    if pm25 < 150: return 1.5
+    if pm25 < 250: return 0.5
+    return 0.0
+
+
+@app.get(
+    "/health_impact/{sensor_id}",
+    response_model=HealthImpactResponse,
+    tags=["Health Impact"],
+    summary="Health impact assessment for a sensor location",
+)
+def health_impact_sensor(sensor_id: str, db: Session = Depends(get_db)):
+    sensor = db.query(SensorRegistry).filter(
+        SensorRegistry.sensor_id == sensor_id
+    ).first()
+    if not sensor:
+        raise HTTPException(status_code=404, detail=f"Sensor '{sensor_id}' not found.")
+
+    latest = (
+        db.query(SensorReadings)
+        .filter(SensorReadings.sensor_id == sensor_id)
+        .order_by(SensorReadings.timestamp.desc())
+        .first()
+    )
+    pm25 = latest.pm2p5_corrected if latest and latest.pm2p5_corrected else 50.0
+
+    risks = _compute_health_risks(pm25)
+
+    vulnerable = []
+    if pm25 > 35:
+        vulnerable.extend(["Children (< 14 years)", "Elderly (> 65 years)", "Pregnant women"])
+    if pm25 > 55:
+        vulnerable.extend(["Asthma/COPD patients", "Heart disease patients"])
+    if pm25 > 100:
+        vulnerable.extend(["All outdoor workers", "Athletes"])
+    if pm25 > 150:
+        vulnerable.append("General population at risk")
+
+    recs = []
+    if pm25 > 150:
+        recs.append("🚨 Stay indoors — use air purifiers with HEPA filters")
+        recs.append("🏥 People with respiratory/heart conditions should seek medical advice")
+    if pm25 > 100:
+        recs.append("😷 Wear N95/KN95 masks outdoors")
+        recs.append("🏫 Schools should cancel outdoor activities")
+    if pm25 > 55:
+        recs.append("🚫 Avoid prolonged outdoor exercise")
+        recs.append("🪟 Keep windows and doors closed")
+    if pm25 > 35:
+        recs.append("💧 Stay hydrated and consume antioxidant-rich foods")
+    recs.append("📱 Monitor real-time AQI updates on Vayu-Rakshak")
+
+    # Rough population density estimate per km² (urban India avg ~11,000/km²)
+    pop_density = 11000
+    coverage_km2 = math.pi * 1 ** 2  # 1km sensor radius
+    estimated_pop = int(pop_density * coverage_km2)
+
+    return HealthImpactResponse(
+        sensor_id=sensor_id,
+        location_name=sensor.location_name,
+        current_pm25=round(pm25, 1),
+        aqi_category=_aqi_category(pm25),
+        exposure_duration_safe_hours=_safe_exposure_hours(pm25),
+        health_risks=risks,
+        vulnerable_groups=vulnerable,
+        recommendations=recs,
+        estimated_population_exposed=estimated_pop,
+    )
+
+
+@app.get(
+    "/city_health_impact",
+    response_model=CityHealthImpactResponse,
+    tags=["Health Impact"],
+    summary="City-wide health impact assessment",
+)
+def city_health_impact(city: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(SensorRegistry)
+    if city:
+        query = query.filter(SensorRegistry.city == city)
+    sensors = query.all()
+    if not sensors:
+        raise HTTPException(status_code=404, detail="No sensors found.")
+
+    pm25_values = []
+    zone_breakdown = []
+    for s in sensors:
+        latest = (
+            db.query(SensorReadings)
+            .filter(SensorReadings.sensor_id == s.sensor_id)
+            .order_by(SensorReadings.timestamp.desc())
+            .first()
+        )
+        if latest and latest.pm2p5_corrected:
+            pm25_values.append(latest.pm2p5_corrected)
+            zone_breakdown.append({
+                "sensor_id": s.sensor_id,
+                "location": s.location_name,
+                "pm25": round(latest.pm2p5_corrected, 1),
+                "health_risk_score": round(min(100, latest.pm2p5_corrected * 0.6), 1),
+            })
+
+    overall = statistics.mean(pm25_values) if pm25_values else 0
+    risks = _compute_health_risks(overall)
+
+    # Population estimate
+    pop_per_sensor = 11000 * math.pi  # ~34,558 per sensor coverage area
+    total_pop = int(pop_per_sensor * len(pm25_values))
+
+    if overall > 150: advisory = "RED — Public Health Emergency"
+    elif overall > 100: advisory = "ORANGE — Health Alert"
+    elif overall > 55: advisory = "YELLOW — Caution Advisory"
+    elif overall > 35: advisory = "GREEN — Moderate"
+    else: advisory = "BLUE — Good Air Quality"
+
+    recs = []
+    if overall > 150:
+        recs.append("Issue city-wide health emergency advisory")
+        recs.append("Deploy emergency air purification trucks to hotspots")
+        recs.append("Enforce complete construction ban")
+    if overall > 100:
+        recs.append("Activate odd-even traffic restrictions")
+        recs.append("Close outdoor markets and restrict industrial operations")
+    if overall > 55:
+        recs.append("Issue advisory for schools to suspend outdoor activities")
+        recs.append("Increase water sprinkling on roads")
+    recs.append("Continue 24/7 AI-powered monitoring with Vayu-Rakshak")
+
+    return CityHealthImpactResponse(
+        city_name=city or "All Cities",
+        overall_aqi=round(overall, 1),
+        estimated_population_affected=total_pop,
+        health_risks=risks,
+        zone_breakdown=sorted(zone_breakdown, key=lambda x: x["pm25"], reverse=True)[:20],
+        advisory_level=advisory,
+        recommendations=recs,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE 4: PDF REPORT GENERATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get(
+    "/report/{city}",
+    tags=["Reports"],
+    summary="Generate a professional PDF air quality report",
+)
+def generate_report(city: str, db: Session = Depends(get_db)):
+    from fastapi.responses import StreamingResponse
+    from report_generator import generate_city_report
+
+    try:
+        pdf_bytes = generate_city_report(city, db)
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="vayu_rakshak_{city}_{datetime.now().strftime("%Y%m%d")}.pdf"'
+            },
+        )
+    except Exception as e:
+        logger.error(f"Report generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE 5: GEOFENCING & SMART ALERT ZONES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    """Calculate distance between two points in km."""
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+@app.post(
+    "/geofence",
+    response_model=GeoFenceOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Geofencing"],
+    summary="Create a geofence zone around a sensitive location",
+)
+def create_geofence(payload: GeoFenceRequest, db: Session = Depends(get_db)):
+    zone = GeoFenceZone(
+        name=payload.name,
+        zone_type=payload.zone_type,
+        center_lat=payload.center_lat,
+        center_lon=payload.center_lon,
+        radius_m=payload.radius_m,
+        pm25_threshold=payload.pm25_threshold,
+    )
+    db.add(zone)
+    db.commit()
+    db.refresh(zone)
+    return GeoFenceOut(
+        id=zone.id, name=zone.name, zone_type=zone.zone_type,
+        center_lat=zone.center_lat, center_lon=zone.center_lon,
+        radius_m=zone.radius_m, pm25_threshold=zone.pm25_threshold,
+        is_active=zone.is_active,
+    )
+
+
+@app.get("/geofences", response_model=List[GeoFenceOut], tags=["Geofencing"],
+         summary="List all geofence zones with breach status")
+def list_geofences(db: Session = Depends(get_db)):
+    zones = db.query(GeoFenceZone).filter(GeoFenceZone.is_active == 1).all()
+    result = []
+    for zone in zones:
+        # Find nearest sensor and check breach
+        sensors = db.query(SensorRegistry).all()
+        current_pm25 = None
+        is_breached = False
+
+        for sensor in sensors:
+            dist = _haversine_km(zone.center_lat, zone.center_lon, sensor.lat, sensor.long)
+            if dist <= zone.radius_m / 1000:
+                latest = (
+                    db.query(SensorReadings)
+                    .filter(SensorReadings.sensor_id == sensor.sensor_id)
+                    .order_by(SensorReadings.timestamp.desc())
+                    .first()
+                )
+                if latest and latest.pm2p5_corrected:
+                    if current_pm25 is None or latest.pm2p5_corrected > current_pm25:
+                        current_pm25 = latest.pm2p5_corrected
+                    if latest.pm2p5_corrected > zone.pm25_threshold:
+                        is_breached = True
+
+        result.append(GeoFenceOut(
+            id=zone.id, name=zone.name, zone_type=zone.zone_type,
+            center_lat=zone.center_lat, center_lon=zone.center_lon,
+            radius_m=zone.radius_m, pm25_threshold=zone.pm25_threshold,
+            is_active=zone.is_active,
+            current_pm25=round(current_pm25, 1) if current_pm25 else None,
+            is_breached=is_breached,
+        ))
+    return result
+
+
+@app.get("/geofence_alerts", tags=["Geofencing"],
+         summary="Get currently breached geofence zones")
+def geofence_alerts(db: Session = Depends(get_db)):
+    all_zones = list_geofences(db)
+    breached = [z for z in all_zones if z.is_breached]
+    return {
+        "total_zones": len(all_zones),
+        "breached_zones": len(breached),
+        "alerts": [z.dict() for z in breached],
+    }
+
+
+@app.delete("/geofence/{zone_id}", tags=["Geofencing"])
+def delete_geofence(zone_id: int, db: Session = Depends(get_db)):
+    zone = db.query(GeoFenceZone).filter(GeoFenceZone.id == zone_id).first()
+    if not zone:
+        raise HTTPException(status_code=404, detail="Geofence zone not found.")
+    db.delete(zone)
+    db.commit()
+    return {"status": "deleted", "id": zone_id}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE 6: MULTI-CITY COMPARISON
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get(
+    "/city_comparison",
+    response_model=CityComparisonResponse,
+    tags=["Advanced Analytics"],
+    summary="Compare AQI, health, and trends across all cities",
+)
+def city_comparison(db: Session = Depends(get_db)):
+    # Get all distinct cities
+    cities_raw = db.query(SensorRegistry.city).distinct().all()
+    cities_list = [c[0] for c in cities_raw if c[0]]
+
+    entries = []
+    for city_name in cities_list:
+        sensors = db.query(SensorRegistry).filter(SensorRegistry.city == city_name).all()
+        sensor_count = len(sensors)
+
+        pm25_values = []
+        health_scores = []
+        anomaly_total = 0
+        total_readings = 0
+
+        for sensor in sensors:
+            readings = (
+                db.query(SensorReadings)
+                .filter(SensorReadings.sensor_id == sensor.sensor_id)
+                .order_by(SensorReadings.timestamp.desc())
+                .limit(50)
+                .all()
+            )
+            if readings:
+                latest_pm25 = readings[0].pm2p5_corrected
+                if latest_pm25:
+                    pm25_values.append(latest_pm25)
+
+                total = len(readings)
+                anom = sum(1 for r in readings if r.is_anomaly == 1)
+                fail = sum(1 for r in readings if r.is_failure == 1)
+                drift_m = [abs(r.pm2p5_raw - r.pm2p5_corrected) for r in readings
+                          if r.pm2p5_raw and r.pm2p5_corrected]
+                avg_d = statistics.mean(drift_m) if drift_m else 0
+
+                score = 100 - (anom/max(total,1))*40 - (fail/max(total,1))*30 - min(avg_d/5, 20)
+                health_scores.append(max(0, min(100, score)))
+                anomaly_total += anom
+                total_readings += total
+
+        if not pm25_values:
+            continue
+
+        city_aqi_val = statistics.mean(pm25_values)
+        avg_health = statistics.mean(health_scores) if health_scores else 50
+
+        if avg_health >= 90: grade = "A"
+        elif avg_health >= 75: grade = "B"
+        elif avg_health >= 60: grade = "C"
+        elif avg_health >= 40: grade = "D"
+        else: grade = "F"
+
+        # Trend
+        recent = db.query(func.avg(SensorReadings.pm2p5_corrected)).join(
+            SensorRegistry, SensorReadings.sensor_id == SensorRegistry.sensor_id
+        ).filter(
+            SensorRegistry.city == city_name,
+            SensorReadings.timestamp > datetime.now() - timedelta(hours=2),
+        ).scalar() or city_aqi_val
+
+        older = db.query(func.avg(SensorReadings.pm2p5_corrected)).join(
+            SensorRegistry, SensorReadings.sensor_id == SensorRegistry.sensor_id
+        ).filter(
+            SensorRegistry.city == city_name,
+            SensorReadings.timestamp > datetime.now() - timedelta(hours=4),
+            SensorReadings.timestamp <= datetime.now() - timedelta(hours=2),
+        ).scalar() or city_aqi_val
+
+        if recent > older * 1.05: trend = "rising"
+        elif recent < older * 0.95: trend = "falling"
+        else: trend = "stable"
+
+        entries.append(CityComparisonEntry(
+            city=city_name,
+            aqi=round(city_aqi_val, 1),
+            aqi_category=_aqi_category(city_aqi_val),
+            sensor_count=sensor_count,
+            active_sensors=len(pm25_values),
+            avg_health_score=round(avg_health, 1),
+            health_grade=grade,
+            anomaly_rate=round(anomaly_total / max(total_readings, 1) * 100, 1),
+            trend=trend,
+            coverage_pct=round(len(pm25_values) / max(sensor_count, 1) * 100, 1),
+        ))
+
+    entries.sort(key=lambda x: x.aqi)
+    best = entries[0].city if entries else "N/A"
+    worst = entries[-1].city if entries else "N/A"
+
+    return CityComparisonResponse(
+        cities=entries,
+        best_city=best,
+        worst_city=worst,
+        generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
