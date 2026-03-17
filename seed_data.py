@@ -1,13 +1,4 @@
-"""
-seed_data.py — Seed the Vayu-Rakshak database with a massive sensor network.
 
-This script procedurally generates simulated sensors around Roorkee and Delhi,
-using data from the existing data/ folder as base templates,
-with slight random noise added for realistic variance between sensors.
-
-Run ONCE after starting the FastAPI server:
-    python seed_data.py
-"""
 
 import os
 import glob
